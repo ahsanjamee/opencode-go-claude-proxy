@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy this file to ~/.opencode-proxy/config.json and fill in your settings.",
+  "models": {
+    "minimax-m2.7": { "backend": "anthropic", "endpoint": "/v1/messages" },
+    "minimax-m2.5": { "backend": "anthropic", "endpoint": "/v1/messages" },
+    "qwen3.6-plus": { "backend": "alibaba",   "endpoint": "/v1/chat/completions" },
+    "qwen3.5-plus": { "backend": "alibaba",   "endpoint": "/v1/chat/completions" }
+  },
+  "modelAliases": {
+    "_comment": "Maps Claude Code's internal model names to OpenCode Go models.",
+    "claude-haiku-*":     "qwen3.5-plus",
+    "claude-sonnet-*":    "qwen3.6-plus",
+    "claude-opus-*":      "qwen3.6-plus",
+    "claude-3-5-haiku-*": "qwen3.5-plus",
+    "claude-3-7-sonnet-*":"qwen3.6-plus"
+  },
+  "global": {
+    "baseUrl": "https://opencode.ai/zen/go",
+    "timeoutMs": 300000,
+    "showReasoning": false,
+    "defaultModel": "qwen3.6-plus"
+  }
+}

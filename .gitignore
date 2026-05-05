@@ -1,0 +1,29 @@
+# Build output
+dist/
+bin/
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+config/config.json
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp
+nul
