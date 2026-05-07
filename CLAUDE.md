@@ -178,8 +178,9 @@ docker run -p 3456:3456 --env-file .env opencode-proxy
 | Flag | Env var | Default | Description |
 |------|---------|---------|-------------|
 | `--api-key` | `OPENCODE_API_KEY` | — | OpenCode Go API key (required) |
-| `--port` | `PORT` | `3456` | Listen port |
-| `--base-url` | `OPENCODE_BASE_URL` | `https://opencode.ai/zen/go/v1` | Upstream base URL |
+| `--port` | `PROXY_PORT` | `3456` | Listen port |
+| `--base-url` | `PROXY_BASE_URL` | `https://opencode.ai/zen/go` | Upstream base URL |
+| `--timeout` | `PROXY_TIMEOUT_MS` | `60000` | Request timeout in ms |
 
 ### Configure Claude Code
 

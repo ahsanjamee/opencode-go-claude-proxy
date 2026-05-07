@@ -8,7 +8,8 @@ import type {
 } from "../types/anthropic.js";
 import type { OpenAIRequest, OpenAIMessage, OpenAITool, OpenAISSEChunk } from "../types/openai.js";
 import { getTimeoutMs } from "../config.js";
-import { mapFinishReason } from "../utils.js";
+import { mapFinishReason, extractUpstreamErrorMessage } from "../utils.js";
+import { openAIResponseToAnthropic } from "./response-converter.js";
 
 // ---------------------------------------------------------------------------
 // Request transformation: Anthropic → OpenAI
@@ -50,12 +51,12 @@ function anthropicMessagesToOpenAI(messages: AnthropicMessage[]): OpenAIMessage[
             : block.content.map((b) => (b.type === "text" ? b.text : "")).join("");
         result.push({ role: "tool", content, tool_call_id: block.tool_use_id });
       } else if (block.type === "image") {
+        console.warn("[translator] Image blocks are not supported by OpenAI-format backends — dropping image");
         textParts.push(`[Image: ${block.source.media_type}]`);
       }
     }
 
     if (toolCalls.length > 0) {
-      // content:null is valid here because tool_calls is present (OpenAI spec allows this)
       const openaiMsg: OpenAIMessage = {
         role: "assistant",
         content: textParts.length > 0 ? textParts.join("\n") : null,
@@ -64,16 +65,13 @@ function anthropicMessagesToOpenAI(messages: AnthropicMessage[]): OpenAIMessage[
       if (reasoningParts.length > 0) openaiMsg.reasoning_content = reasoningParts.join("\n");
       result.push(openaiMsg);
     } else if (textParts.length > 0 || reasoningParts.length > 0) {
-      // content MUST be a string when there are no tool_calls — "" is valid, null is not.
-      // This case triggers when a message has only a thinking block (textParts empty).
       const openaiMsg: OpenAIMessage = {
         role: msg.role,
-        content: textParts.join("\n"), // empty string "" is valid; null would be rejected
+        content: textParts.join("\n"),
       };
       if (reasoningParts.length > 0) openaiMsg.reasoning_content = reasoningParts.join("\n");
       result.push(openaiMsg);
     } else if (msg.role === "assistant") {
-      // Empty assistant message — must use "" not null (no tool_calls present)
       result.push({ role: "assistant", content: "" });
     }
   }
@@ -99,14 +97,10 @@ function anthropicSystemToOpenAI(system: AnthropicRequest["system"]): string | u
 }
 
 // OpenCode Go models support at most ~16 000 output tokens.
-// Claude Code can send max_tokens ≥ 64 000 (extended-thinking budget) which
-// causes "generation exceeded max tokens limit" errors from the upstream.
 const UPSTREAM_MAX_TOKENS = 16000;
 
 function buildOpenAIRequest(body: AnthropicRequest, resolvedModel: string): OpenAIRequest {
   const req: OpenAIRequest = {
-    // Use the resolved model ID (e.g. "qwen3.6-plus") not the raw Claude model
-    // name (e.g. "claude-haiku-4-5-20251001") which upstream doesn't support.
     model: resolvedModel,
     messages: anthropicMessagesToOpenAI(body.messages),
   };
@@ -116,23 +110,17 @@ function buildOpenAIRequest(body: AnthropicRequest, resolvedModel: string): Open
 
   if (body.tools && body.tools.length > 0) req.tools = anthropicToolsToOpenAI(body.tools);
 
-  // Cap max_tokens — never send more than the upstream model supports.
   const requestedMax = body.max_tokens ?? UPSTREAM_MAX_TOKENS;
   req.max_tokens = Math.min(requestedMax, UPSTREAM_MAX_TOKENS);
 
   if (body.temperature !== undefined) req.temperature = body.temperature;
   if (body.stop_sequences !== undefined) req.stop = body.stop_sequences;
 
-  // Claude Code defaults to streaming
   req.stream = body.stream !== false;
-
-  // body.thinking (extended thinking config) is intentionally NOT forwarded to
-  // OpenAI-format backends — they don't understand it and may reject the request.
 
   return req;
 }
 
-// Prefer the real upstream tool call ID; fall back to a synthetic one.
 function resolveToolId(upstreamId: string | undefined, index: number): string {
   if (upstreamId && upstreamId.trim() !== "") return upstreamId;
   return `toolu_${String(index).padStart(24, "0")}`;
@@ -146,15 +134,15 @@ export async function handleOpenAITranslation(
   c: Context,
   body: AnthropicRequest,
   route: ResolvedRoute,
-  upstreamHeaders: Record<string, string>
+  upstreamHeaders: Record<string, string>,
 ): Promise<Response> {
   const url = `${route.baseUrl}${route.endpoint}`;
-  // Build the request using the resolved model ID (not the raw Claude model name)
   const openAIReq = buildOpenAIRequest(body, route.resolvedModel);
   const isStream = openAIReq.stream !== false;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), getTimeoutMs());
+  const timeoutMs = getTimeoutMs();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {
@@ -164,31 +152,22 @@ export async function handleOpenAITranslation(
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (!res.ok) {
-      // Parse upstream error and re-wrap in Anthropic error format so Claude
-      // Code can display it cleanly instead of crashing on unexpected JSON.
-      let upstreamMsg = `Upstream error ${res.status}`;
-      try {
-        const errBody = await res.json() as any;
-        upstreamMsg = errBody?.error?.message ?? errBody?.message ?? JSON.stringify(errBody);
-      } catch {
-        try { upstreamMsg = await res.text(); } catch { /* ignore */ }
-      }
+      clearTimeout(timeoutId);
+      const upstreamMsg = await extractUpstreamErrorMessage(res);
       console.error(`[proxy] upstream ${res.status}: ${upstreamMsg}`);
       return c.json(
         {
           type: "error",
           error: { type: "api_error", message: `Error from provider: ${upstreamMsg}` },
         },
-        res.status as any
+        res.status as any,
       );
     }
 
     if (!isStream || !res.body) {
+      clearTimeout(timeoutId);
       const data = await res.json();
-      const { openAIResponseToAnthropic } = await import("./response-converter.js");
       return c.json(openAIResponseToAnthropic(data, body.model));
     }
 
@@ -202,15 +181,10 @@ export async function handleOpenAITranslation(
         const decoder = new TextDecoder();
 
         // ----------- state ------------------------------------------------
-        // contentIndex tracks the NEXT block index to use.
-        // We open blocks (text/thinking/tool_use) and advance contentIndex.
-        // Blocks are closed by emitting content_block_stop at their own index.
         let contentIndex = 0;
-        let textBlockIdx = -1;     // index of currently-open text block (-1 = none)
-        let thinkingBlockIdx = -1; // index of currently-open thinking block (-1 = none)
-        // Maps OpenAI tool delta index → absolute Anthropic content-block index
+        let textBlockIdx = -1;
+        let thinkingBlockIdx = -1;
         const toolBlockIdx = new Map<number, number>();
-        // Maps OpenAI tool delta index → real tool call ID (from upstream or synthetic)
         const toolIdMap = new Map<number, string>();
         let pendingFinishReason: string | null = null;
         let buffer = "";
@@ -276,6 +250,13 @@ export async function handleOpenAITranslation(
         // ----------- main stream loop -------------------------------------
         try {
           while (true) {
+            // Check for timeout between reads so a stream that hangs
+            // mid-response is eventually terminated.
+            if (controller.signal.aborted) {
+              stopKeepalive();
+              break;
+            }
+
             const { done, value } = await reader.read();
             if (done) break;
 
@@ -304,7 +285,6 @@ export async function handleOpenAITranslation(
                 stopKeepalive();
 
                 if (thinkingBlockIdx === -1) {
-                  // Close open text block if any
                   if (textBlockIdx !== -1) {
                     closeBlockAt(textBlockIdx);
                     textBlockIdx = -1;
@@ -325,7 +305,6 @@ export async function handleOpenAITranslation(
                 stopKeepalive();
 
                 if (textBlockIdx === -1) {
-                  // Close open thinking block if any
                   if (thinkingBlockIdx !== -1) {
                     closeBlockAt(thinkingBlockIdx);
                     thinkingBlockIdx = -1;
@@ -345,7 +324,6 @@ export async function handleOpenAITranslation(
                 firstContentReceived = true;
                 stopKeepalive();
 
-                // Close any open text/thinking block first
                 if (textBlockIdx !== -1) {
                   closeBlockAt(textBlockIdx);
                   textBlockIdx = -1;
@@ -359,7 +337,6 @@ export async function handleOpenAITranslation(
                   const tcIdx = tc.index ?? 0;
 
                   if (tc.function?.name && !toolBlockIdx.has(tcIdx)) {
-                    // Open a new tool_use block, preferring the upstream's real tool ID
                     const blockIdx = contentIndex++;
                     toolBlockIdx.set(tcIdx, blockIdx);
                     const toolId = resolveToolId(tc.id, tcIdx);
@@ -395,11 +372,9 @@ export async function handleOpenAITranslation(
           // ----------- end of stream: close all open blocks ---------------
           stopKeepalive();
 
-          // Close open text/thinking block
           if (textBlockIdx !== -1)    closeBlockAt(textBlockIdx);
           if (thinkingBlockIdx !== -1) closeBlockAt(thinkingBlockIdx);
 
-          // Close each tool_use block
           for (const [, blockIdx] of toolBlockIdx) {
             closeBlockAt(blockIdx);
           }
@@ -421,6 +396,7 @@ export async function handleOpenAITranslation(
           stopKeepalive();
           streamController.error(err);
         } finally {
+          clearTimeout(timeoutId);
           reader.releaseLock();
         }
       },

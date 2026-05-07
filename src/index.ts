@@ -10,7 +10,7 @@ Usage:
   opencode-go-proxy [options]
 
 Options:
-  --port <number>      Port to listen on (default: 3456)
+  --port <number>      Port to listen on (default: 3456 or $PROXY_PORT)
   --api-key <string>   OpenCode API key (or set OPENCODE_API_KEY env var)
   --base-url <url>     OpenCode base URL (default: https://opencode.ai/zen/go)
   --timeout <ms>       Request timeout in ms (default: 60000)
@@ -22,6 +22,7 @@ Environment Variables:
   PROXY_CONFIG_PATH    Optional. Path to custom config JSON.
   PROXY_BASE_URL       Optional. Override the OpenCode base URL.
   PROXY_TIMEOUT_MS     Optional. Override the request timeout.
+  PROXY_PORT           Optional. Port to listen on (overridden by --port).
 
 Claude Code Setup:
   Edit ~/.claude/settings.json:
@@ -39,7 +40,7 @@ Claude Code Setup:
 
 function parseArgs(): { port: number; help: boolean } {
   const args = process.argv.slice(2);
-  let port = 3456;
+  let port = parseInt(process.env.PROXY_PORT || process.env.PORT || "3456", 10);
   let help = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -90,12 +91,22 @@ async function main() {
     `[server] baseUrl: ${process.env.PROXY_BASE_URL || "https://opencode.ai/zen/go"}`,
   );
 
-  serve({
+  const server = serve({
     fetch: app.fetch,
     port,
   });
 
   console.log(`[server] Listening on http://localhost:${port}`);
+
+  const shutdown = (signal: string) => {
+    console.log(`\n[server] Received ${signal} — shutting down gracefully`);
+    server.close(() => {
+      console.log("[server] Closed");
+      process.exit(0);
+    });
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 main().catch((err) => {

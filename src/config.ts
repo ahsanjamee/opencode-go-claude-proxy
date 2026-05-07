@@ -30,18 +30,22 @@ function loadUserConfig(): ProxyConfig | null {
   }
 }
 
+const KNOWN_MODEL_PROPS = new Set(["backend", "endpoint", "baseurl"]);
+
 function loadEnvOverrides(): Record<string, Partial<ModelConfig>> {
   const overrides: Record<string, Partial<ModelConfig>> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith("PROXY_MODEL_") || !value) continue;
     // PROXY_MODEL_KIMI_K2_5_BACKEND=openai
     const parts = key.replace("PROXY_MODEL_", "").split("_");
-    const prop = parts.pop()?.toLowerCase();
-    const modelId = parts.join("-").toLowerCase();
-    if (!prop || !modelId) continue;
+    const last = parts[parts.length - 1].toLowerCase();
+    if (!KNOWN_MODEL_PROPS.has(last)) continue;
+    const modelId = parts.slice(0, -1).join("-").toLowerCase();
+    if (!modelId) continue;
     if (!overrides[modelId]) overrides[modelId] = {};
-    if (prop === "backend") overrides[modelId].backend = value as any;
-    if (prop === "endpoint") overrides[modelId].endpoint = value;
+    if (last === "backend") overrides[modelId].backend = value as any;
+    if (last === "endpoint") overrides[modelId].endpoint = value;
+    if (last === "baseurl") overrides[modelId].baseUrl = value;
   }
   return overrides;
 }

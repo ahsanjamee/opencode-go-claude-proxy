@@ -1,5 +1,6 @@
 import type { DiscoveryResponse, ModelConfig } from "./types/index.js";
-import { getBaseUrl, getApiKey } from "./config.js";
+import { getBaseUrl, getApiKey, getConfig } from "./config.js";
+import { USER_AGENT } from "./utils.js";
 
 let cachedModels: Record<string, ModelConfig> | null = null;
 let cacheTime = 0;
@@ -13,6 +14,7 @@ export async function discoverModels(): Promise<Record<string, ModelConfig>> {
 
   const apiKey = getApiKey();
   if (!apiKey) {
+    console.warn("[discovery] API key not set — skipping model discovery");
     return {};
   }
 
@@ -20,7 +22,7 @@ export async function discoverModels(): Promise<Record<string, ModelConfig>> {
     const res = await fetch(`${getBaseUrl()}/v1/models`, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "User-Agent": "opencode-go-claude-proxy/1.0.0",
+        "User-Agent": USER_AGENT,
       },
     });
 
@@ -31,13 +33,13 @@ export async function discoverModels(): Promise<Record<string, ModelConfig>> {
 
     const data = (await res.json()) as DiscoveryResponse;
     const discovered: Record<string, ModelConfig> = {};
+    const defaults = getConfig().models;
 
     for (const model of data.data) {
       const id = model.id;
-      // Skip if already in defaults (we trust defaults more)
-      if (cachedModels?.[id]) continue;
+      // Skip models already defined in static config (defaults + user overrides)
+      if (defaults[id]) continue;
 
-      // Heuristic: models not in defaults default to openai
       discovered[id] = { backend: "openai", endpoint: "/v1/chat/completions" };
     }
 
