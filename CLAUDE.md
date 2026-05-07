@@ -58,7 +58,7 @@ config/
 .github/
   workflows/
     ci.yml       Runs on every push/PR: install → build → verify
-    release.yml  Runs on version tags: build binaries + Docker + npm publish
+    release.yml  Runs on version tags: build binaries + GitHub Release
 ```
 
 ---
@@ -157,20 +157,20 @@ they don't understand it and may reject the request with 400.
 ## Build & run
 
 ```bash
+# Setup
+cp .env.example .env
+# Edit .env and add your API key
+
 # Development (hot-reload via tsx)
-npm run dev -- --api-key sk-YOUR-KEY
+npm run dev
 
 # Production build
 npm run build
-node dist/index.js --api-key sk-YOUR-KEY
+npm start
 
 # Docker
-docker build -t opencode-go-proxy .
-docker run -p 3456:3456 -e OPENCODE_API_KEY=sk-YOUR-KEY opencode-go-proxy
-
-# Standalone binary (requires pkg)
-npm run build && npm run pkg:all   # all platforms
-npm run pkg:linux                  # linux only
+docker build -t opencode-proxy .
+docker run -p 3456:3456 --env-file .env opencode-proxy
 ```
 
 ### CLI flags
@@ -212,24 +212,3 @@ claude
 5. **Always use `mapFinishReason()`** — never hard-code `"end_turn"` or pass OpenAI reasons through.
 6. **Tool block indices must match** — the `index` in `content_block_stop` must equal the `index` in the corresponding `content_block_start`.
 
----
-
-## Release process
-
-Releases are fully automated via GitHub Actions.
-
-```bash
-# Bump version in package.json, then:
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-This triggers `.github/workflows/release.yml` which:
-1. Builds standalone binaries for Linux x64/arm64, macOS x64/arm64, Windows x64
-2. Builds and pushes multi-arch Docker image to `ghcr.io`
-3. Publishes the npm package
-4. Creates a GitHub Release with all binary assets attached
-
-Requires these GitHub secrets set up:
-- `NPM_TOKEN` — npm access token with publish permission
-- `GITHUB_TOKEN` — auto-provided by GitHub Actions (for GHCR)

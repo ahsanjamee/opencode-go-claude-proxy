@@ -19,135 +19,75 @@ OpenCode Go gives access to powerful coding models (Kimi K2, GLM-5, DeepSeek V4,
 
 ## Quickstart (choose one method)
 
-### Method 1 — npx (no install, simplest)
+### Method 1 — Docker (local build)
 
-```bash
-# Linux / macOS
-OPENCODE_API_KEY=sk-YOUR-KEY npx opencode-go-claude-proxy
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/ahsanjamee/opencode-go-claude-proxy.git
+   cd opencode-go-claude-proxy
+   ```
 
-# Windows (PowerShell)
-$env:OPENCODE_API_KEY="sk-YOUR-KEY"; npx opencode-go-claude-proxy
+2. Build the image:
+   ```bash
+   docker build -t opencode-proxy .
+   ```
 
-# Or pass the key as a flag
-npx opencode-go-claude-proxy --api-key sk-YOUR-KEY
-```
-
----
-
-### Method 2 — npm global install
-
-```bash
-npm install -g opencode-go-claude-proxy
-```
-
-Then start it:
-
-```bash
-# Pass the key directly
-opencode-go-proxy --api-key sk-YOUR-KEY
-
-# Or via environment variable (recommended — set it once in your shell profile)
-export OPENCODE_API_KEY=sk-YOUR-KEY   # add to ~/.bashrc or ~/.zshrc
-opencode-go-proxy
-```
-
-> **Why the difference from `npm run start`?**  
-> After a global install you get the `opencode-go-proxy` command directly — this is the correct way to use it. `npm run start` is for contributors working on the source.
+3. Run the proxy (passing your API key):
+   ```bash
+   docker run -d --name proxy -p 3456:3456 -e OPENCODE_API_KEY=sk-YOUR-KEY opencode-proxy
+   ```
 
 ---
 
-### Method 3 — Standalone binary (no Node.js needed)
+### Method 2 — Run from Source (Node.js)
 
-Download the binary for your platform from the [Releases page](https://github.com/ahsanjamee/opencode-go-claude-proxy/releases):
+1. Clone the repository and install dependencies:
+   ```bash
+   git clone https://github.com/ahsanjamee/opencode-go-claude-proxy.git
+   cd opencode-go-claude-proxy
+   npm install
+   ```
 
-| Platform | File |
-|----------|------|
-| Linux x64 | `opencode-go-proxy-linux-x64` |
-| Linux arm64 | `opencode-go-proxy-linux-arm64` |
-| macOS x64 | `opencode-go-proxy-macos-x64` |
-| macOS arm64 | `opencode-go-proxy-macos-arm64` (Apple Silicon) |
-| Windows x64 | `opencode-go-proxy-win-x64.exe` |
+2. Create an `.env` file from the example:
+   ```bash
+   cp .env.example .env
+   ```
+   *Edit `.env` and add your `OPENCODE_API_KEY`.*
 
-```bash
-# macOS / Linux — make executable and run
-chmod +x opencode-go-proxy-macos-arm64
-./opencode-go-proxy-macos-arm64 --api-key sk-YOUR-KEY
-
-# Windows — run in PowerShell or cmd
-.\opencode-go-proxy-win-x64.exe --api-key sk-YOUR-KEY
-```
-
----
-
-### Method 4 — Docker
-
-```bash
-docker run -d \
-  --name opencode-proxy \
-  -p 3456:3456 \
-  -e OPENCODE_API_KEY=sk-YOUR-KEY \
-  ahsanjamee/opencode-go-claude-proxy:latest
-```
-
-> The `-d` flag runs it in the background. View logs with `docker logs opencode-proxy`.
-
-**With docker-compose** (recommended for persistent setup):
-
-```yaml
-# docker-compose.yml
-version: "3.9"
-services:
-  proxy:
-    image: ahsanjamee/opencode-go-claude-proxy:latest
-    ports:
-      - "3456:3456"
-    environment:
-      OPENCODE_API_KEY: sk-YOUR-KEY
-    restart: unless-stopped
-```
-
-```bash
-docker compose up -d
-```
-
----
-
-### Method 5 — Source (for contributors)
-
-```bash
-git clone https://github.com/ahsanjamee/opencode-go-claude-proxy.git
-cd opencode-go-claude-proxy
-npm install
-npm run dev -- --api-key sk-YOUR-KEY
-```
-
-> Notice the `--` separator: this tells npm to pass `--api-key` to the script, not treat it as an npm flag.
-
-For the production build after making changes:
-
-```bash
-npm run build
-# npm run start requires the -- separator to pass flags:
-npm run start -- --api-key sk-YOUR-KEY
-# Or just use the env var instead:
-OPENCODE_API_KEY=sk-YOUR-KEY npm start
-```
+3. Start the proxy:
+   ```bash
+   # For development (hot-reload):
+   npm run dev
+   
+   # For production:
+   npm run build
+   npm start
+   ```
 
 ---
 
 ## Step 2 — Configure Claude Code to use the proxy
 
-In the **same terminal** where you run `claude` (or add to your shell profile):
+Create or edit the Claude Code settings file (usually at `~/.claude/settings.json`) to point it to the proxy:
 
-```bash
-export ANTHROPIC_BASE_URL=http://127.0.0.1:3456
-export ANTHROPIC_AUTH_TOKEN=unused
-export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1   # prevents 400 errors from beta headers
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:3456",
+    "ANTHROPIC_AUTH_TOKEN": "unused",
+    "ANTHROPIC_MODEL": "kimi-k2.5",
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+  },
+  "theme": "dark-ansi",
+  "effortLevel": "high"
+}
 ```
 
-Then just run `claude` as normal. It will route through OpenCode Go automatically.
+> **Tip:** You can change `ANTHROPIC_MODEL` to any model listed in the [Supported Models](#supported-models) table (like `minimax-m2.7` or `deepseek-v4-pro`). The proxy will automatically route your requests to the correct backend.
 
 ---
+
+
 
 ## All CLI flags
 
@@ -258,26 +198,6 @@ You can override these mappings by editing `~/.opencode-proxy/config.json`:
 }
 ```
 
----
-
-## Releasing a new version
-
-```bash
-# 1. Edit version in package.json
-# 2. Commit, tag, push
-git add .
-git commit -m "chore: release v1.2.0"
-git tag v1.2.0
-git push origin main --tags
-```
-
-GitHub Actions automatically:
-1. Builds binaries for 5 platforms
-2. Pushes multi-arch Docker image to Docker Hub (`ahsanjamee/opencode-go-claude-proxy`) and GHCR
-3. Publishes npm package
-4. Creates GitHub Release with all binaries attached
-
-Requires GitHub Secrets: `NPM_TOKEN`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`
 
 ---
 

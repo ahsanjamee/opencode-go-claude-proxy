@@ -19,10 +19,6 @@
     "start": "node dist/index.js",
     "clean": "node -e \"const fs=require('fs');const rm=p=>{if(fs.existsSync(p))fs.rmSync(p,{recursive:true})};rm('dist');rm('bin');\"",
     "prebuild": "npm run clean",
-    "pkg:all": "pkg dist/index.js --targets node20-linux-x64,node20-linux-arm64,node20-macos-x64,node20-macos-arm64,node20-win-x64 --out-path bin/",
-    "pkg:linux": "pkg dist/index.js --targets node20-linux-x64,node20-linux-arm64 --out-path bin/",
-    "pkg:macos": "pkg dist/index.js --targets node20-macos-x64,node20-macos-arm64 --out-path bin/",
-    "pkg:win": "pkg dist/index.js --targets node20-win-x64 --out-path bin/",
     "prepublishOnly": "npm run build"
   },
   "_usage_note": "Pass args after -- separator: npm start -- --api-key sk-... OR set OPENCODE_API_KEY env var",
@@ -53,20 +49,12 @@
   "homepage": "https://github.com/ahsanjamee/opencode-go-claude-proxy#readme",
   "dependencies": {
     "@hono/node-server": "^2.0.1",
+    "dotenv": "^17.4.2",
     "hono": "^4.4.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",
-    "pkg": "^5.8.0",
     "tsx": "^4.10.0",
     "typescript": "^5.4.0"
-  },
-  "pkg": {
-    "scripts": [
-      "dist/**/*.js"
-    ],
-    "assets": [
-      "config/**/*"
-    ]
   }
 }

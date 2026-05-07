@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createServer } from "./server.js";
 import { serve } from "@hono/node-server";
 
@@ -23,13 +24,15 @@ Environment Variables:
   PROXY_TIMEOUT_MS     Optional. Override the request timeout.
 
 Claude Code Setup:
-  Add to ~/.claude.json:
+  Edit ~/.claude/settings.json:
   {
     "env": {
       "ANTHROPIC_BASE_URL": "http://localhost:3456",
-      "ANTHROPIC_AUTH_TOKEN": "$OPENCODE_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN": "unused",
       "ANTHROPIC_MODEL": "kimi-k2.5"
-    }
+    },
+    "theme": "dark-ansi",
+    "effortLevel": "high"
   }
 `);
 }
@@ -73,7 +76,9 @@ async function main() {
   }
 
   if (!process.env.OPENCODE_API_KEY) {
-    console.error("Error: OPENCODE_API_KEY is required. Set it via --api-key or environment variable.");
+    console.error(
+      "Error: OPENCODE_API_KEY is required. Set it via --api-key or environment variable.",
+    );
     showHelp();
     process.exit(1);
   }
@@ -81,7 +86,9 @@ async function main() {
   const app = createServer();
 
   console.log(`[server] opencode-go-claude-proxy starting on port ${port}`);
-  console.log(`[server] baseUrl: ${process.env.PROXY_BASE_URL || "https://opencode.ai/zen/go"}`);
+  console.log(
+    `[server] baseUrl: ${process.env.PROXY_BASE_URL || "https://opencode.ai/zen/go"}`,
+  );
 
   serve({
     fetch: app.fetch,
