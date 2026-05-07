@@ -74,9 +74,9 @@ Create or edit the Claude Code settings file (usually at `~/.claude/settings.jso
 {
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:3456",
-    "ANTHROPIC_AUTH_TOKEN": "unused",
-    "ANTHROPIC_MODEL": "kimi-k2.5",
-    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    "ANTHROPIC_AUTH_TOKEN": "sk-test",
+    "ANTHROPIC_API_KEY": "",
+    "ANTHROPIC_MODEL": "deepseek-v4-pro"
   },
   "theme": "dark-ansi",
   "effortLevel": "high"
@@ -204,3 +204,11 @@ You can override these mappings by editing `~/.opencode-proxy/config.json`:
 ## License
 
 MIT
+
+---
+
+#### Disclaimer
+*This project is an unofficial community tool and is not affiliated with, endorsed by, or associated with Anthropic or OpenCode Go. Use it at your own risk.*
+
+#### Credits
+Created with ❤️ by [ahsanjamee](https://github.com/ahsanjamee).
