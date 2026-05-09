@@ -142,7 +142,13 @@ export async function handleOpenAITranslation(
 
   const controller = new AbortController();
   const timeoutMs = getTimeoutMs();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  // For streaming we use an idle timeout: reset every time a chunk arrives.
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const resetTimeout = () => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  };
+  timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {
@@ -260,6 +266,7 @@ export async function handleOpenAITranslation(
             const { done, value } = await reader.read();
             if (done) break;
 
+            resetTimeout();
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
             buffer = lines.pop() || "";
